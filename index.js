@@ -5,7 +5,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = 5000;
 
-app.use(cors());
+app.use(cors({ origin: '*' })); 
+
 app.use(express.json());
 
 const uri = "mongodb+srv://testDBUser:ilc1EMeIFZrlY5n9@nexdev.5cutabm.mongodb.net/?appName=NexDev";
