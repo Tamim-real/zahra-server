@@ -7,9 +7,11 @@ const port = process.env.PORT || 5000;
 
 // Allowed frontends
 const allowedOrigins = [
-  'http://localhost:3000',               // Local frontend
-  'https://zahra-one.vercel.app'         // Deployed frontend
+  'http://localhost:3000',
+  'https://zahra-one.vercel.app',
+  'https://zahra-server-ten.vercel.app'
 ];
+
 
 // CORS middleware
 app.use(cors({
