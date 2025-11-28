@@ -27,7 +27,7 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const uri = process.env.MONGODB_URI || "mongodb+srv://testDBUser:password@nexdev.mongodb.net/?appName=NexDev";
+const uri = process.env.MONGODB_URI || "mongodb+srv://testDBUser:ilc1EMeIFZrlY5n9@nexdev.5cutabm.mongodb.net/testDBUser?retryWrites=true&w=majority";
 const client = new MongoClient(uri, {
   serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
 });
