@@ -12,12 +12,11 @@ const allowedOrigins = [
   'https://zahra-server-ten.vercel.app'
 ];
 
-
 // CORS middleware
 app.use(cors({
   origin: function(origin, callback) {
-    if (!origin) return callback(null, true); // allow Postman or curl
-    if (allowedOrigins.indexOf(origin) === -1) {
+    if (!origin) return callback(null, true); // allow Postman/curl
+    if (!allowedOrigins.includes(origin)) {
       return callback(new Error(`CORS error: origin ${origin} not allowed`), false);
     }
     return callback(null, true);
@@ -39,54 +38,115 @@ async function run() {
     const db = client.db('testDBUser');
     const productsCollection = db.collection('products');
 
+    console.log("✅ Connected to MongoDB!");
+
+    // -------------------------------
     // GET all products
-    app.get('/products', async (req, res) => {
+    // -------------------------------
+    app.get('/api/products', async (req, res) => {
       try {
         const products = await productsCollection.find().toArray();
         res.json(products);
       } catch (err) {
-        res.status(500).json({ error: 'Failed to fetch products' });
+        console.error(err);
+        res.status(500).json({ message: 'Failed to fetch products' });
       }
     });
 
+    // -------------------------------
     // GET single product by ID
-    app.get('/products/:id', async (req, res) => {
+    // -------------------------------
+    app.get('/api/products/:id', async (req, res) => {
       const { id } = req.params;
+      const cleanId = id.trim().replace(/\/$/, "");
+
+      if (!ObjectId.isValid(cleanId)) {
+        return res.status(400).json({ message: "Invalid product ID format" });
+      }
+
       try {
-        const product = await productsCollection.findOne({ _id: new ObjectId(id) });
-        if (!product) return res.status(404).json({ error: "Product not found" });
+        let product = await productsCollection.findOne({ _id: new ObjectId(cleanId) });
+
+        // fallback if _id was saved as string
+        if (!product) {
+          product = await productsCollection.findOne({ _id: cleanId });
+        }
+
+        if (!product) {
+          return res.status(404).json({ message: "Product not found" });
+        }
+
         res.json(product);
       } catch (err) {
-        res.status(500).json({ error: "Invalid product ID" });
+        console.error(err);
+        res.status(500).json({ message: "Server error" });
       }
     });
 
+    // -------------------------------
     // POST new product
-    app.post('/products', async (req, res) => {
+    // -------------------------------
+    app.post('/api/products', async (req, res) => {
       const newProduct = req.body;
       try {
         const result = await productsCollection.insertOne(newProduct);
-        res.json(result);
+        res.status(201).json(result);
       } catch (err) {
-        res.status(500).json({ error: "Failed to create product" });
+        console.error(err);
+        res.status(500).json({ message: "Failed to create product" });
       }
     });
 
-    // DELETE product
-    app.delete('/products/:id', async (req, res) => {
+    // -------------------------------
+    // PATCH update product
+    // -------------------------------
+    app.patch('/api/products/:id', async (req, res) => {
       const { id } = req.params;
+      const updates = req.body;
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid product ID format" });
+      }
+
+      try {
+        const result = await productsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updates }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ message: "Product not found" });
+        }
+
+        res.json({ message: "Product updated successfully" });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to update product" });
+      }
+    });
+
+    // -------------------------------
+    // DELETE product
+    // -------------------------------
+    app.delete('/api/products/:id', async (req, res) => {
+      const { id } = req.params;
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid product ID format" });
+      }
+
       try {
         const result = await productsCollection.deleteOne({ _id: new ObjectId(id) });
         if (result.deletedCount === 0) {
-          return res.status(404).json({ error: "Product not found" });
+          return res.status(404).json({ message: "Product not found" });
         }
         res.json({ message: "Product deleted successfully" });
       } catch (err) {
-        res.status(500).json({ error: "Invalid product ID" });
+        console.error(err);
+        res.status(500).json({ message: "Server error" });
       }
     });
 
-    console.log("✅ Connected to MongoDB!");
   } catch (err) {
     console.error("MongoDB connection failed:", err);
   }
