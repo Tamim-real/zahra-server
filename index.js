@@ -27,7 +27,7 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const uri = "mongodb+srv://testDBUser:ilc1EMeIFZrlY5n9@nexdev.5cutabm.mongodb.net/?appName=NexDev";
+const uri = process.env.MONGODB_URI || "mongodb+srv://testDBUser:password@nexdev.mongodb.net/?appName=NexDev";
 const client = new MongoClient(uri, {
   serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
 });
@@ -46,7 +46,9 @@ async function run() {
     app.get('/api/products', async (req, res) => {
       try {
         const products = await productsCollection.find().toArray();
-        res.json(products);
+        // Ensure _id is string for frontend
+        const formatted = products.map(p => ({ ...p, _id: p._id.toString() }));
+        res.json(formatted);
       } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Failed to fetch products' });
@@ -57,28 +59,32 @@ async function run() {
     // GET single product by ID
     // -------------------------------
     app.get('/api/products/:id', async (req, res) => {
-      const { id } = req.params;
-      const cleanId = id.trim().replace(/\/$/, "");
-
-      if (!ObjectId.isValid(cleanId)) {
-        return res.status(400).json({ message: "Invalid product ID format" });
-      }
+      let { id } = req.params;
+      id = id.trim();
 
       try {
-        let product = await productsCollection.findOne({ _id: new ObjectId(cleanId) });
+        let product = null;
 
-        // fallback if _id was saved as string
+        // Try ObjectId first
+        if (ObjectId.isValid(id)) {
+          product = await productsCollection.findOne({ _id: new ObjectId(id) });
+        }
+
+        // Fallback if stored as string
         if (!product) {
-          product = await productsCollection.findOne({ _id: cleanId });
+          product = await productsCollection.findOne({ _id: id });
         }
 
         if (!product) {
           return res.status(404).json({ message: "Product not found" });
         }
 
+        // Ensure _id is string for frontend
+        product._id = product._id.toString();
+
         res.json(product);
       } catch (err) {
-        console.error(err);
+        console.error("Error fetching product:", err);
         res.status(500).json({ message: "Server error" });
       }
     });
@@ -104,15 +110,15 @@ async function run() {
       const { id } = req.params;
       const updates = req.body;
 
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).json({ message: "Invalid product ID format" });
-      }
-
       try {
-        const result = await productsCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updates }
-        );
+        let filter = null;
+        if (ObjectId.isValid(id)) {
+          filter = { _id: new ObjectId(id) };
+        } else {
+          filter = { _id: id };
+        }
+
+        const result = await productsCollection.updateOne(filter, { $set: updates });
 
         if (result.matchedCount === 0) {
           return res.status(404).json({ message: "Product not found" });
@@ -131,12 +137,15 @@ async function run() {
     app.delete('/api/products/:id', async (req, res) => {
       const { id } = req.params;
 
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).json({ message: "Invalid product ID format" });
-      }
-
       try {
-        const result = await productsCollection.deleteOne({ _id: new ObjectId(id) });
+        let filter = null;
+        if (ObjectId.isValid(id)) {
+          filter = { _id: new ObjectId(id) };
+        } else {
+          filter = { _id: id };
+        }
+
+        const result = await productsCollection.deleteOne(filter);
         if (result.deletedCount === 0) {
           return res.status(404).json({ message: "Product not found" });
         }
