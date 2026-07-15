@@ -1,174 +1,281 @@
-const express = require('express');
-const cors = require('cors');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const express = require("express");
+const cors = require("cors");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const app = express();
-const port = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000;
 
-// Allowed frontends
+/* ========================================
+   Middleware
+======================================== */
+
 const allowedOrigins = [
-  'http://localhost:3000',
-  'https://zahra-one.vercel.app',
-  'https://zahra-server-ten.vercel.app'
+  "http://localhost:3000",
+  "https://zahra-one.vercel.app",
+  "https://zahra-server-ten.vercel.app",
 ];
 
-// CORS middleware
-app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin) return callback(null, true); // allow Postman/curl
-    if (!allowedOrigins.includes(origin)) {
-      return callback(new Error(`CORS error: origin ${origin} not allowed`), false);
-    }
-    return callback(null, true);
-  },
-  credentials: true
-}));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS Error: ${origin} is not allowed.`));
+    },
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
-// MongoDB connection
-const uri = process.env.MONGODB_URI || "mongodb+srv://testDBUser:ilc1EMeIFZrlY5n9@nexdev.5cutabm.mongodb.net/testDBUser?retryWrites=true&w=majority";
+/* ========================================
+   MongoDB
+======================================== */
+
+const uri =
+  process.env.MONGODB_URI ||
+  "mongodb+srv://testDBUser:ilc1EMeIFZrlY5n9@nexdev.5cutabm.mongodb.net/testDBUser?retryWrites=true&w=majority";
+
 const client = new MongoClient(uri, {
-  serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
 });
 
-async function run() {
+let productsCollection;
+
+/* ========================================
+   Helpers
+======================================== */
+
+const getProductFilter = (id) => {
+  return ObjectId.isValid(id)
+    ? { _id: new ObjectId(id) }
+    : { _id: id };
+};
+
+/* ========================================
+   Database Connection
+======================================== */
+
+async function connectDB() {
   try {
     await client.connect();
-    const db = client.db('testDBUser');
-    const productsCollection = db.collection('products');
 
-    console.log("✅ Connected to MongoDB!");
+    await client.db("admin").command({ ping: 1 });
 
-    // -------------------------------
-    // GET all products
-    // -------------------------------
-    app.get('/api/products', async (req, res) => {
-      try {
-        const products = await productsCollection.find().toArray();
-        // Ensure _id is string for frontend
-        const formatted = products.map(p => ({ ...p, _id: p._id.toString() }));
-        res.json(formatted);
-      } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Failed to fetch products' });
-      }
-    });
+    console.log("✅ MongoDB Connected Successfully");
 
-    // -------------------------------
-    // GET single product by ID
-    // -------------------------------
-    app.get('/api/products/:id', async (req, res) => {
-      let { id } = req.params;
-      id = id.trim();
+    const db = client.db("testDBUser");
 
-      try {
-        let product = null;
+    productsCollection = db.collection("products");
+  } catch (error) {
+    console.error("❌ MongoDB Connection Failed");
+    console.error(error);
 
-        // Try ObjectId first
-        if (ObjectId.isValid(id)) {
-          product = await productsCollection.findOne({ _id: new ObjectId(id) });
-        }
-
-        // Fallback if stored as string
-        if (!product) {
-          product = await productsCollection.findOne({ _id: id });
-        }
-
-        if (!product) {
-          return res.status(404).json({ message: "Product not found" });
-        }
-
-        // Ensure _id is string for frontend
-        product._id = product._id.toString();
-
-        res.json(product);
-      } catch (err) {
-        console.error("Error fetching product:", err);
-        res.status(500).json({ message: "Server error" });
-      }
-    });
-
-    // -------------------------------
-    // POST new product
-    // -------------------------------
-    app.post('/api/products', async (req, res) => {
-      const newProduct = req.body;
-      try {
-        const result = await productsCollection.insertOne(newProduct);
-        res.status(201).json(result);
-      } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Failed to create product" });
-      }
-    });
-
-    // -------------------------------
-    // PATCH update product
-    // -------------------------------
-    app.patch('/api/products/:id', async (req, res) => {
-      const { id } = req.params;
-      const updates = req.body;
-
-      try {
-        let filter = null;
-        if (ObjectId.isValid(id)) {
-          filter = { _id: new ObjectId(id) };
-        } else {
-          filter = { _id: id };
-        }
-
-        const result = await productsCollection.updateOne(filter, { $set: updates });
-
-        if (result.matchedCount === 0) {
-          return res.status(404).json({ message: "Product not found" });
-        }
-
-        res.json({ message: "Product updated successfully" });
-      } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Failed to update product" });
-      }
-    });
-
-    // -------------------------------
-    // DELETE product
-    // -------------------------------
-    app.delete('/api/products/:id', async (req, res) => {
-      const { id } = req.params;
-
-      try {
-        let filter = null;
-        if (ObjectId.isValid(id)) {
-          filter = { _id: new ObjectId(id) };
-        } else {
-          filter = { _id: id };
-        }
-
-        const result = await productsCollection.deleteOne(filter);
-        if (result.deletedCount === 0) {
-          return res.status(404).json({ message: "Product not found" });
-        }
-        res.json({ message: "Product deleted successfully" });
-      } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server error" });
-      }
-    });
-
-  } catch (err) {
-    console.error("MongoDB connection failed:", err);
+    process.exit(1);
   }
 }
 
-run().catch(console.dir);
+/* ========================================
+   Routes
+======================================== */
 
-// Default route
-app.get('/', (req, res) => {
-  res.send('Hello World!');
+app.get("/", (req, res) => {
+  res.send("🚀 Zahra API Running");
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+/* ========================================
+   Products Routes
+======================================== */
+
+// GET ALL PRODUCTS
+
+app.get("/api/products", async (req, res) => {
+  try {
+    const products = await productsCollection.find().toArray();
+
+    const formattedProducts = products.map((product) => ({
+      ...product,
+      _id: product._id.toString(),
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: formattedProducts.length,
+      data: formattedProducts,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch products",
+    });
+  }
 });
+
+// GET SINGLE PRODUCT
+
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const product = await productsCollection.findOne(
+      getProductFilter(id.trim())
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    product._id = product._id.toString();
+
+    res.status(200).json({
+      success: true,
+      data: product,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch product",
+    });
+  }
+});
+
+// CREATE PRODUCT
+
+app.post("/api/products", async (req, res) => {
+  try {
+    const product = req.body;
+
+    const result = await productsCollection.insertOne(product);
+
+    res.status(201).json({
+      success: true,
+      message: "Product created successfully",
+      insertedId: result.insertedId,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to create product",
+    });
+  }
+});
+
+// UPDATE PRODUCT
+
+app.patch("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const updates = req.body;
+
+    const result = await productsCollection.updateOne(
+      getProductFilter(id),
+      {
+        $set: updates,
+      }
+    );
+
+    if (!result.matchedCount) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Product updated successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update product",
+    });
+  }
+});
+
+// DELETE PRODUCT
+
+app.delete("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await productsCollection.deleteOne(getProductFilter(id));
+
+    if (!result.deletedCount) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Product deleted successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete product",
+    });
+  }
+});
+
+/* ========================================
+   404 Handler
+======================================== */
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route Not Found",
+  });
+});
+
+/* ========================================
+   Global Error Handler
+======================================== */
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+
+  res.status(500).json({
+    success: false,
+    message: err.message || "Internal Server Error",
+  });
+});
+
+/* ========================================
+   Start Server
+======================================== */
+
+async function startServer() {
+  await connectDB();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+}
+
+startServer();
